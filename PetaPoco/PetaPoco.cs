@@ -320,6 +320,7 @@ namespace PetaPoco
 		// Common initialization
 		private void CommonConstruct()
 		{
+            MapperRegistry.Current = this;
             _transactionDepth = 0;
             ForceDateTimesToUtc = true;
             EnableAutoSelect = true;
@@ -354,6 +355,7 @@ namespace PetaPoco
 		{
 			// Automatically close one open connection reference
 			//  (Works with KeepConnectionAlive and manually opening a shared connection)
+            MapperRegistry.Current = this;
 			CloseSharedConnection();
         }
 
@@ -363,6 +365,7 @@ namespace PetaPoco
 		// Open a connection (can be nested)
         public void OpenSharedConnection()
 		{
+            MapperRegistry.Current = this;
 			if (_sharedConnectionDepth == 0)
 			{
 				_sharedConnection = _factory.CreateConnection();
@@ -380,6 +383,7 @@ namespace PetaPoco
 		// Close a previously opened connection
         public void CloseSharedConnection()
 		{
+            MapperRegistry.Current = this;
 			if (_sharedConnectionDepth > 0)
 			{
 				_sharedConnectionDepth--;
@@ -395,17 +399,19 @@ namespace PetaPoco
 		// Access to our shared connection
 		public IDbConnection Connection
 		{
-			get { return _sharedConnection; }
+            get { MapperRegistry.Current = this; return _sharedConnection; }
 		}
 
 		// Helper to create a transaction scope
 		public Transaction GetTransaction()
 		{
+            MapperRegistry.Current = this;
 			return GetTransaction(null);
 		}
 
         public Transaction GetTransaction(IsolationLevel? isolationLevel)
         {
+            MapperRegistry.Current = this;
             return new Transaction(this, isolationLevel);
         }
 
@@ -423,6 +429,7 @@ namespace PetaPoco
 		// Use `using (var scope=db.Transaction) { scope.Complete(); }` to ensure correct semantics
         public void BeginTransaction(IsolationLevel? isolationLevel)
 		{
+            MapperRegistry.Current = this;
 			_transactionDepth++;
 
 			if (_transactionDepth == 1)
@@ -438,6 +445,7 @@ namespace PetaPoco
 		// Internal helper to cleanup transaction stuff
 		void CleanupTransaction()
 		{
+            MapperRegistry.Current = this;
 			OnEndTransaction();
 
 			if (_transactionCancelled)
@@ -454,6 +462,7 @@ namespace PetaPoco
 		// Abort the entire outer most transaction scope
 		public void AbortTransaction()
 		{
+            MapperRegistry.Current = this;
 			_transactionCancelled = true;
 			if ((--_transactionDepth) == 0)
 				CleanupTransaction();
@@ -462,6 +471,7 @@ namespace PetaPoco
 		// Complete the transaction
 		public void CompleteTransaction()
 		{
+            MapperRegistry.Current = this;
 			if ((--_transactionDepth) == 0)
 				CleanupTransaction();
 		}
@@ -545,12 +555,16 @@ namespace PetaPoco
 		// Add a parameter to a DB command
 		void AddParam(IDbCommand cmd, object item, string ParameterPrefix)
 		{
+            MapperRegistry.Current = this;
 		    // Convert value to from poco type to db type
-			if (Database.Mapper != null && item!=null)
+			if (item!=null)
 			{
-				var fn = Database.Mapper.GetToDbConverter(item.GetType());
-				if (fn!=null)
-					item = fn(item);
+                if(MapperRegistry.Mapper !=null)
+                {
+                    var fn= MapperRegistry.Mapper.GetToDbConverter(item.GetType());
+				    if (fn!=null)
+					    item = fn(item);
+                }
 			}
 
 			// Support passed in parameters
@@ -621,6 +635,7 @@ namespace PetaPoco
 		static Regex rxParamsPrefix = new Regex(@"(?<!@)@\w+", RegexOptions.Compiled);
         IDbCommand CreateCommand(IDbConnection connection, string sql, params object[] args)
 		{
+            MapperRegistry.Current = this;
 			// Perform parameter prefix replacements
 			if (_paramPrefix != "@")
 				sql = rxParamsPrefix.Replace(sql, m => _paramPrefix + m.Value.Substring(1));
@@ -652,12 +667,13 @@ namespace PetaPoco
 	    // Override this to log/capture exceptions
 		public virtual void OnException(Exception x)
 		{
+            MapperRegistry.Current = this;
 			System.Diagnostics.Debug.WriteLine(x.ToString());
 			System.Diagnostics.Debug.WriteLine(LastCommand);
 		}
 
 		// Override this to log commands, or modify command before execution
-		public virtual IDbConnection OnConnectionOpened(IDbConnection conn) { return conn; }
+        public virtual IDbConnection OnConnectionOpened(IDbConnection conn) { MapperRegistry.Current = this; return conn; }
 		public virtual void OnConnectionClosing(IDbConnection conn) { }
 		public virtual void OnExecutingCommand(IDbCommand cmd) { }
 		public virtual void OnExecutedCommand(IDbCommand cmd) { }
@@ -672,7 +688,7 @@ namespace PetaPoco
 		{
             var sql = Sql.SQL;
             var args = Sql.Arguments;
-
+            MapperRegistry.Current = this;
             try
             {
 				OpenSharedConnection();
@@ -700,11 +716,13 @@ namespace PetaPoco
 		// Execute and cast a scalar property
 		public T ExecuteScalar<T>(string sql, params object[] args)
 		{
+            MapperRegistry.Current = this;
             return ExecuteScalar<T>(new Sql(sql, args));
 		}
 
 		public T ExecuteScalar<T>(Sql Sql)
 		{
+            MapperRegistry.Current = this;
             var sql = Sql.SQL;
             var args = Sql.Arguments;
 
@@ -736,6 +754,7 @@ namespace PetaPoco
         static Regex rxFrom = new Regex(@"\A\s*FROM\s", RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase | RegexOptions.Multiline);
         string AddSelectClause<T>(string sql)
         {
+            MapperRegistry.Current = this;
 			if (sql.StartsWith(";"))
 				return sql.Substring(1);
 
@@ -758,6 +777,7 @@ namespace PetaPoco
 		// Return a typed list of pocos
 		public List<T> Fetch<T>(string sql, params object[] args) 
 		{
+            MapperRegistry.Current = this;
 		    return Fetch<T>(new Sql(sql, args));
 		}
             
@@ -768,6 +788,7 @@ namespace PetaPoco
 
         public List<T> Fetch<T>()
         {
+            MapperRegistry.Current = this;
             return Fetch<T>("");
         }
 
@@ -809,6 +830,7 @@ namespace PetaPoco
 
 		public void BuildPageQueries<T>(long skip, long take, string sql, ref object[] args, out string sqlCount, out string sqlPage) 
 		{
+            MapperRegistry.Current = this;
 			// Add auto select clause
 			sql=AddSelectClause<T>(sql);
 
@@ -847,6 +869,7 @@ namespace PetaPoco
 		// Fetch a page	
 		public Page<T> Page<T>(long page, long itemsPerPage, string sql, params object[] args) 
 		{
+            MapperRegistry.Current = this;
 			string sqlCount, sqlPage;
 			BuildPageQueries<T>((page-1)*itemsPerPage, itemsPerPage, sql, ref args, out sqlCount, out sqlPage);
 
@@ -873,21 +896,25 @@ namespace PetaPoco
 
 		public Page<T> Page<T>(long page, long itemsPerPage, Sql sql) 
 		{
+            MapperRegistry.Current = this;
 			return Page<T>(page, itemsPerPage, sql.SQL, sql.Arguments);
 		}
 
         public List<T> Fetch<T>(long page, long itemsPerPage, string sql, params object[] args)
         {
+            MapperRegistry.Current = this;
             return SkipTake<T>((page - 1) * itemsPerPage, itemsPerPage, sql, args);
         }
 
         public List<T> Fetch<T>(long page, long itemsPerPage, Sql sql)
         {
+            MapperRegistry.Current = this;
             return SkipTake<T>((page - 1) * itemsPerPage, itemsPerPage, sql.SQL, sql.Arguments);
         }
 
 		public List<T> SkipTake<T>(long skip, long take, string sql, params object[] args)
 		{
+            MapperRegistry.Current = this;
             string sqlCount, sqlPage;
 			BuildPageQueries<T>(skip, take, sql, ref args, out sqlCount, out sqlPage);
             return Fetch<T>(sqlPage, args);
@@ -895,16 +922,19 @@ namespace PetaPoco
 
 		public List<T> SkipTake<T>(long skip, long take, Sql sql)
         {
+            MapperRegistry.Current = this;
 			return SkipTake<T>(skip, take, sql.SQL, sql.Arguments);
         }
 
         public Dictionary<TKey, TValue> Dictionary<TKey, TValue>(Sql Sql)
         {
+            MapperRegistry.Current = this;
             return Dictionary<TKey, TValue>(Sql.SQL, Sql.Arguments);
         }
 
         public Dictionary<TKey, TValue> Dictionary<TKey, TValue>(string sql, params object[] args)
         {
+            MapperRegistry.Current = this;
             var newDict = new Dictionary<TKey, TValue>();
             bool isConverterSet = false;
             Func<object, object> converter1 = x => x, converter2 = x => x;
@@ -938,11 +968,13 @@ namespace PetaPoco
         // Return an enumerable collection of pocos
         public IEnumerable<T> Query<T>(string sql, params object[] args)
         {
+            MapperRegistry.Current = this;
             return Query<T>(new Sql(sql, args));
         }
 
         public IEnumerable<T> Query<T>(Sql Sql) 
 		{
+            MapperRegistry.Current = this;
             var sql = Sql.SQL;
             var args = Sql.Arguments;
 
@@ -997,48 +1029,49 @@ namespace PetaPoco
 		}
 
 		// Multi Fetch
-		public List<TRet> Fetch<T1, T2, TRet>(Func<T1, T2, TRet> cb, string sql, params object[] args) { return Query<T1, T2, TRet>(cb, sql, args).ToList(); }
-		public List<TRet> Fetch<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, string sql, params object[] args) { return Query<T1, T2, T3, TRet>(cb, sql, args).ToList(); }
-		public List<TRet> Fetch<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, string sql, params object[] args) { return Query<T1, T2, T3, T4, TRet>(cb, sql, args).ToList(); }
+        public List<TRet> Fetch<T1, T2, TRet>(Func<T1, T2, TRet> cb, string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1, T2, TRet>(cb, sql, args).ToList(); }
+        public List<TRet> Fetch<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1, T2, T3, TRet>(cb, sql, args).ToList(); }
+        public List<TRet> Fetch<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1, T2, T3, T4, TRet>(cb, sql, args).ToList(); }
 
 		// Multi Query
-		public IEnumerable<TRet> Query<T1, T2, TRet>(Func<T1, T2, TRet> cb, string sql, params object[] args) { return Query<TRet>(new Type[] { typeof(T1), typeof(T2) }, cb, sql, args); }
-		public IEnumerable<TRet> Query<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, string sql, params object[] args) { return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3)}, cb, sql, args); }
-		public IEnumerable<TRet> Query<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, string sql, params object[] args) { return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4)}, cb, sql, args); }
+        public IEnumerable<TRet> Query<T1, T2, TRet>(Func<T1, T2, TRet> cb, string sql, params object[] args) { MapperRegistry.Current = this; return Query<TRet>(new Type[] { typeof(T1), typeof(T2) }, cb, sql, args); }
+        public IEnumerable<TRet> Query<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, string sql, params object[] args) { MapperRegistry.Current = this; return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, cb, sql, args); }
+        public IEnumerable<TRet> Query<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, string sql, params object[] args) { MapperRegistry.Current = this; return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, cb, sql, args); }
 
 		// Multi Fetch (SQL builder)
-		public List<TRet> Fetch<T1, T2, TRet>(Func<T1, T2, TRet> cb, Sql sql) { return Query<T1, T2, TRet>(cb, sql.SQL, sql.Arguments).ToList(); }
-		public List<TRet> Fetch<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, Sql sql) { return Query<T1, T2, T3, TRet>(cb, sql.SQL, sql.Arguments).ToList(); }
-		public List<TRet> Fetch<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, Sql sql) { return Query<T1, T2, T3, T4, TRet>(cb, sql.SQL, sql.Arguments).ToList(); }
+        public List<TRet> Fetch<T1, T2, TRet>(Func<T1, T2, TRet> cb, Sql sql) { MapperRegistry.Current = this; return Query<T1, T2, TRet>(cb, sql.SQL, sql.Arguments).ToList(); }
+        public List<TRet> Fetch<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, Sql sql) { MapperRegistry.Current = this; return Query<T1, T2, T3, TRet>(cb, sql.SQL, sql.Arguments).ToList(); }
+        public List<TRet> Fetch<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, Sql sql) { MapperRegistry.Current = this; return Query<T1, T2, T3, T4, TRet>(cb, sql.SQL, sql.Arguments).ToList(); }
 
 		// Multi Query (SQL builder)
-		public IEnumerable<TRet> Query<T1, T2, TRet>(Func<T1, T2, TRet> cb, Sql sql) { return Query<TRet>(new Type[] { typeof(T1), typeof(T2) }, cb, sql.SQL, sql.Arguments); }
-		public IEnumerable<TRet> Query<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, Sql sql) { return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, cb, sql.SQL, sql.Arguments); }
-		public IEnumerable<TRet> Query<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, Sql sql) { return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, cb, sql.SQL, sql.Arguments); }
+        public IEnumerable<TRet> Query<T1, T2, TRet>(Func<T1, T2, TRet> cb, Sql sql) { MapperRegistry.Current = this; return Query<TRet>(new Type[] { typeof(T1), typeof(T2) }, cb, sql.SQL, sql.Arguments); }
+        public IEnumerable<TRet> Query<T1, T2, T3, TRet>(Func<T1, T2, T3, TRet> cb, Sql sql) { MapperRegistry.Current = this; return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, cb, sql.SQL, sql.Arguments); }
+        public IEnumerable<TRet> Query<T1, T2, T3, T4, TRet>(Func<T1, T2, T3, T4, TRet> cb, Sql sql) { MapperRegistry.Current = this; return Query<TRet>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, cb, sql.SQL, sql.Arguments); }
 
 		// Multi Fetch (Simple)
-		public List<T1> Fetch<T1, T2>(string sql, params object[] args) { return Query<T1, T2>(sql, args).ToList(); }
-		public List<T1> Fetch<T1, T2, T3>(string sql, params object[] args) { return Query<T1, T2, T3>(sql, args).ToList(); }
-		public List<T1> Fetch<T1, T2, T3, T4>(string sql, params object[] args) { return Query<T1, T2, T3, T4>(sql, args).ToList(); }
+        public List<T1> Fetch<T1, T2>(string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1, T2>(sql, args).ToList(); }
+        public List<T1> Fetch<T1, T2, T3>(string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1, T2, T3>(sql, args).ToList(); }
+        public List<T1> Fetch<T1, T2, T3, T4>(string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1, T2, T3, T4>(sql, args).ToList(); }
 
 		// Multi Query (Simple)
-		public IEnumerable<T1> Query<T1, T2>(string sql, params object[] args) { return Query<T1>(new Type[] { typeof(T1), typeof(T2) }, null, sql, args); }
-		public IEnumerable<T1> Query<T1, T2, T3>(string sql, params object[] args) { return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, null, sql, args); }
-		public IEnumerable<T1> Query<T1, T2, T3, T4>(string sql, params object[] args) { return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, null, sql, args); }
+        public IEnumerable<T1> Query<T1, T2>(string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1>(new Type[] { typeof(T1), typeof(T2) }, null, sql, args); }
+        public IEnumerable<T1> Query<T1, T2, T3>(string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, null, sql, args); }
+        public IEnumerable<T1> Query<T1, T2, T3, T4>(string sql, params object[] args) { MapperRegistry.Current = this; return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, null, sql, args); }
 
 		// Multi Fetch (Simple) (SQL builder)
-		public List<T1> Fetch<T1, T2>(Sql sql) { return Query<T1, T2>(sql.SQL, sql.Arguments).ToList(); }
-		public List<T1> Fetch<T1, T2, T3>(Sql sql) { return Query<T1, T2, T3>(sql.SQL, sql.Arguments).ToList(); }
-		public List<T1> Fetch<T1, T2, T3, T4>(Sql sql) { return Query<T1, T2, T3, T4>(sql.SQL, sql.Arguments).ToList(); }
+        public List<T1> Fetch<T1, T2>(Sql sql) { MapperRegistry.Current = this; return Query<T1, T2>(sql.SQL, sql.Arguments).ToList(); }
+        public List<T1> Fetch<T1, T2, T3>(Sql sql) { MapperRegistry.Current = this; return Query<T1, T2, T3>(sql.SQL, sql.Arguments).ToList(); }
+        public List<T1> Fetch<T1, T2, T3, T4>(Sql sql) { MapperRegistry.Current = this; return Query<T1, T2, T3, T4>(sql.SQL, sql.Arguments).ToList(); }
 
 		// Multi Query (Simple) (SQL builder)
-		public IEnumerable<T1> Query<T1, T2>(Sql sql) { return Query<T1>(new Type[] { typeof(T1), typeof(T2) }, null, sql.SQL, sql.Arguments); }
-		public IEnumerable<T1> Query<T1, T2, T3>(Sql sql) { return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, null, sql.SQL, sql.Arguments); }
-		public IEnumerable<T1> Query<T1, T2, T3, T4>(Sql sql) { return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, null, sql.SQL, sql.Arguments); }
+        public IEnumerable<T1> Query<T1, T2>(Sql sql) { MapperRegistry.Current = this; return Query<T1>(new Type[] { typeof(T1), typeof(T2) }, null, sql.SQL, sql.Arguments); }
+        public IEnumerable<T1> Query<T1, T2, T3>(Sql sql) { MapperRegistry.Current = this; return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3) }, null, sql.SQL, sql.Arguments); }
+        public IEnumerable<T1> Query<T1, T2, T3, T4>(Sql sql) { MapperRegistry.Current = this; return Query<T1>(new Type[] { typeof(T1), typeof(T2), typeof(T3), typeof(T4) }, null, sql.SQL, sql.Arguments); }
 
 		// Automagically guess the property relationships between various POCOs and create a delegate that will set them up
 		object GetAutoMapper(Type[] types)
 		{
+            MapperRegistry.Current = this;
 			// Build a key
 			var kb = new StringBuilder();
 			foreach (var t in types)
@@ -1114,6 +1147,7 @@ namespace PetaPoco
 		// Find the split point in a result set for two different pocos and return the poco factory for the first
 		Delegate FindSplitPoint(Type typeThis, Type typeNext, string sql, IDataReader r, ref int pos)
 		{
+            MapperRegistry.Current = this;
 			// Last?
 			if (typeNext == null)
 				return PocoData.ForType(typeThis).GetFactory(sql, _sharedConnection.ConnectionString, ForceDateTimesToUtc, pos, r.FieldCount - pos, r);
@@ -1149,6 +1183,7 @@ namespace PetaPoco
 		// Create a multi-poco factory
 		Func<IDataReader, object, TRet> CreateMultiPocoFactory<TRet>(Type[] types, string sql, IDataReader r)
 		{
+            MapperRegistry.Current = this;
 			var m = new DynamicMethod("petapoco_multipoco_factory", typeof(TRet), new Type[] { typeof(MultiPocoFactory), typeof(IDataReader), typeof(object) }, typeof(MultiPocoFactory));
 			var il = m.GetILGenerator();
 
@@ -1191,6 +1226,7 @@ namespace PetaPoco
 		// Get (or create) the multi-poco factory for a query
 		Func<IDataReader, object, TRet> GetMultiPocoFactory<TRet>(Type[] types, string sql, IDataReader r)
 		{
+            MapperRegistry.Current = this;
 			// Build a key string  (this is crap, should address this at some point)
 			var kb = new StringBuilder();
 			kb.Append(typeof(TRet).ToString());
@@ -1243,6 +1279,7 @@ namespace PetaPoco
 		// Actual implementation of the multi-poco query
 		public IEnumerable<TRet> Query<TRet>(Type[] types, object cb, string sql, params object[] args)
 		{
+            MapperRegistry.Current = this;
 			OpenSharedConnection();
 			try
 			{
@@ -1304,63 +1341,76 @@ namespace PetaPoco
 
 		public bool Exists<T>(object primaryKey) 
 		{
+            MapperRegistry.Current = this;
             var index = 0;
             var primaryKeyValuePairs = GetPrimaryKeyValues(PocoData.ForType(typeof(T)).TableInfo.PrimaryKey, primaryKey);
             return FirstOrDefault<T>(string.Format("WHERE {0}", BuildPrimaryKeySql(primaryKeyValuePairs, ref index)), primaryKeyValuePairs.Select(x => x.Value).ToArray()) != null;
 		}
 		public T Single<T>(object primaryKey) 
 		{
+            MapperRegistry.Current = this;
             var index = 0;
             var primaryKeyValuePairs = GetPrimaryKeyValues(PocoData.ForType(typeof(T)).TableInfo.PrimaryKey, primaryKey);
             return Single<T>(string.Format("WHERE {0}", BuildPrimaryKeySql(primaryKeyValuePairs, ref index)), primaryKeyValuePairs.Select(x => x.Value).ToArray());
 		}
 		public T SingleOrDefault<T>(object primaryKey) 
 		{
+            MapperRegistry.Current = this;
 		    var index = 0;
             var primaryKeyValuePairs = GetPrimaryKeyValues(PocoData.ForType(typeof(T)).TableInfo.PrimaryKey, primaryKey);
             return SingleOrDefault<T>(string.Format("WHERE {0}", BuildPrimaryKeySql(primaryKeyValuePairs, ref index)), primaryKeyValuePairs.Select(x => x.Value).ToArray());
 		}
 		public T Single<T>(string sql, params object[] args) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql, args).Single();
 		}
 		public T SingleOrDefault<T>(string sql, params object[] args) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql, args).SingleOrDefault();
 		}
 		public T First<T>(string sql, params object[] args) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql, args).First();
 		}
 		public T FirstOrDefault<T>(string sql, params object[] args) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql, args).FirstOrDefault();
 		}
 		public T Single<T>(Sql sql) 
 		{
+            MapperRegistry.Current = this;
             return Query<T>(sql).Single();
 		}
 		public T SingleOrDefault<T>(Sql sql) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql).SingleOrDefault();
 		}
 		public T First<T>(Sql sql) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql).First();
 		}
 		public T FirstOrDefault<T>(Sql sql) 
 		{
+            MapperRegistry.Current = this;
 			return Query<T>(sql).FirstOrDefault();
 		}
 
 		public string EscapeTableName(string str)
 		{
+            MapperRegistry.Current = this;
 			// Assume table names with "dot" are already escaped
 			return str.IndexOf('.') >= 0 ? str : EscapeSqlIdentifier(str);
 		}
 
 		public string EscapeSqlIdentifier(string str)
 		{
+            MapperRegistry.Current = this;
 			switch (_dbType)
 			{
 				case DBType.MySql:
@@ -1379,6 +1429,7 @@ namespace PetaPoco
 
 		public object Insert(string tableName, string primaryKeyName, object poco)
 		{
+            MapperRegistry.Current = this;
 			return Insert(tableName, primaryKeyName, true, poco);
 		}
 
@@ -1387,6 +1438,7 @@ namespace PetaPoco
 		// the new id is returned.
 		public object Insert(string tableName, string primaryKeyName, bool autoIncrement, object poco)
 		{
+            MapperRegistry.Current = this;
 			try
 			{
 				OpenSharedConnection();
@@ -1561,12 +1613,14 @@ namespace PetaPoco
 		// Insert an annotated poco object
 		public object Insert(object poco)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(poco.GetType());
 			return Insert(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, pd.TableInfo.AutoIncrement, poco);
 		}
 
 		public int Update(string tableName, string primaryKeyName, object poco, object primaryKeyValue)
 		{
+            MapperRegistry.Current = this;
 			return Update(tableName, primaryKeyName, poco, primaryKeyValue, null);
 		}
 
@@ -1574,6 +1628,7 @@ namespace PetaPoco
 		// Update a record with values from a poco.  primary key value can be either supplied or read from the poco
 		public int Update(string tableName, string primaryKeyName, object poco, object primaryKeyValue, IEnumerable<string> columns)
 		{
+            MapperRegistry.Current = this;
 			try
 			{
 				OpenSharedConnection();
@@ -1670,6 +1725,7 @@ namespace PetaPoco
 
         private string BuildPrimaryKeySql(Dictionary<string, object> primaryKeyValuePair, ref int index)
         {
+            MapperRegistry.Current = this;
             var tempIndex = index;
             index += primaryKeyValuePair.Count;
             return string.Join(" AND ", primaryKeyValuePair.Select((x, i) => string.Format("{0} = {1}{2}", EscapeSqlIdentifier(x.Key), _paramPrefix, tempIndex + i)).ToArray());
@@ -1677,6 +1733,7 @@ namespace PetaPoco
 
         private Dictionary<string, object> GetPrimaryKeyValues(string primaryKeyName, object primaryKeyValue) 
         {
+            MapperRegistry.Current = this;
             Dictionary<string, object> primaryKeyValues;
 
             var multiplePrimaryKeysNames = primaryKeyName.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray();
@@ -1699,53 +1756,63 @@ namespace PetaPoco
 
         public int Update(string tableName, string primaryKeyName, object poco)
 		{
+            MapperRegistry.Current = this;
 			return Update(tableName, primaryKeyName, poco, null);
 		}
 
 		public int Update(string tableName, string primaryKeyName, object poco, IEnumerable<string> columns)
 		{
+            MapperRegistry.Current = this;
 			return Update(tableName, primaryKeyName, poco, null, columns);
 		}
 
 		public int Update(object poco, IEnumerable<string> columns)
 		{
+            MapperRegistry.Current = this;
 			return Update(poco, null, columns);
 		}
 
 		public int Update(object poco)
 		{
+            MapperRegistry.Current = this;
 			return Update(poco, null, null);
 		}
 
 		public int Update(object poco, object primaryKeyValue)
 		{
+            MapperRegistry.Current = this;
 			return Update(poco, primaryKeyValue, null);
 		}
 		public int Update(object poco, object primaryKeyValue, IEnumerable<string> columns)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(poco.GetType());
 			return Update(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, poco, primaryKeyValue, columns);
 		}
 
 		public int Update<T>(string sql, params object[] args)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(typeof(T));
 			return Execute(string.Format("UPDATE {0} {1}", EscapeTableName(pd.TableInfo.TableName), sql), args);
 		}
 
 		public int Update<T>(Sql sql)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(typeof(T));
 			return Execute(new Sql(string.Format("UPDATE {0}", EscapeTableName(pd.TableInfo.TableName))).Append(sql));
 		}
 
 		public int Delete(string tableName, string primaryKeyName, object poco)
 		{
+            MapperRegistry.Current = this;
 			return Delete(tableName, primaryKeyName, poco, null);
 		}
 
 		public int Delete(string tableName, string primaryKeyName, object poco, object primaryKeyValue)
 		{
+            MapperRegistry.Current = this;
             var primaryKeyValuePairs = GetPrimaryKeyValues(primaryKeyName, primaryKeyValue);
 			// If primary key value not specified, pick it up from the object
             if (primaryKeyValue == null)
@@ -1768,12 +1835,14 @@ namespace PetaPoco
 
 		public int Delete(object poco)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(poco.GetType());
 			return Delete(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, poco);
 		}
 
 		public int Delete<T>(object pocoOrPrimaryKey)
 		{
+            MapperRegistry.Current = this;
 			if (pocoOrPrimaryKey.GetType() == typeof(T))
 				return Delete(pocoOrPrimaryKey);
 			var pd = PocoData.ForType(typeof(T));
@@ -1782,12 +1851,14 @@ namespace PetaPoco
 
 		public int Delete<T>(string sql, params object[] args)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(typeof(T));
 			return Execute(string.Format("DELETE FROM {0} {1}", EscapeTableName(pd.TableInfo.TableName), sql), args);
 		}
 
 		public int Delete<T>(Sql sql)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(typeof(T));
 			return Execute(new Sql(string.Format("DELETE FROM {0}", EscapeTableName(pd.TableInfo.TableName))).Append(sql));
 		}
@@ -1795,6 +1866,7 @@ namespace PetaPoco
 		// Check if a poco represents a new record
 		public bool IsNew(string primaryKeyName, object poco)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForObject(poco, primaryKeyName);
 			object pk;
 			PocoColumn pc;
@@ -1844,6 +1916,7 @@ namespace PetaPoco
 
 		public bool IsNew(object poco)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(poco.GetType());
 			if (!pd.TableInfo.AutoIncrement)
 				throw new InvalidOperationException("IsNew() and Save() are only supported on tables with auto-increment/identity primary key columns");
@@ -1853,6 +1926,7 @@ namespace PetaPoco
 		// Insert new record or Update existing record
 		public void Save(string tableName, string primaryKeyName, object poco)
 		{
+            MapperRegistry.Current = this;
 			if (IsNew(primaryKeyName, poco))
 			{
 				Insert(tableName, primaryKeyName, true, poco);
@@ -1865,6 +1939,7 @@ namespace PetaPoco
 
 		public void Save(object poco)
 		{
+            MapperRegistry.Current = this;
 			var pd = PocoData.ForType(poco.GetType());
 			Save(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, poco);
 		}
@@ -1874,6 +1949,7 @@ namespace PetaPoco
 
 		void DoPreExecute(IDbCommand cmd)
 		{
+            MapperRegistry.Current = this;
 			// Setup command timeout
 			if (OneTimeCommandTimeout != 0)
 			{
@@ -1893,20 +1969,22 @@ namespace PetaPoco
 			_lastArgs = (from IDataParameter parameter in cmd.Parameters select parameter.Value).ToArray();
 		}
 
-		public string LastSQL { get { return _lastSql; } }
-		public object[] LastArgs { get { return _lastArgs; } }
+        public string LastSQL { get { MapperRegistry.Current = this; return _lastSql; } }
+        public object[] LastArgs { get { MapperRegistry.Current = this; return _lastArgs; } }
 		public string LastCommand
 		{
-			get { return FormatCommand(_lastSql, _lastArgs); }
+            get { MapperRegistry.Current = this; return FormatCommand(_lastSql, _lastArgs); }
 		}
 
 		public string FormatCommand(IDbCommand cmd)
 		{
+            MapperRegistry.Current = this;
 			return FormatCommand(cmd.CommandText, (from IDataParameter parameter in cmd.Parameters select parameter.Value).ToArray());
 		}
 
 		public string FormatCommand(string sql, object[] args)
 		{
+            MapperRegistry.Current = this;
 			var sb = new StringBuilder();
 			if (sql == null)
 				return "";
@@ -1921,13 +1999,6 @@ namespace PetaPoco
 				sb.Remove(sb.Length - 1, 1);
 			}
 			return sb.ToString();
-		}
-
-
-		public static IMapper Mapper
-		{
-			get;
-			set;
 		}
 
 		public class PocoColumn
@@ -2040,8 +2111,7 @@ namespace PetaPoco
                 TableInfo.AutoIncrement = TableInfo.AutoIncrement ? !TableInfo.PrimaryKey.Contains(',') : TableInfo.AutoIncrement;
 
 				// Call column mapper
-				if (Database.Mapper != null)
-					Database.Mapper.GetTableInfo(t, TableInfo);
+                if(MapperRegistry.Mapper !=null) MapperRegistry.Mapper.GetTableInfo( t, TableInfo);
 
                 // Work out bound properties
                 bool ExplicitColumns = t.GetCustomAttributes(typeof(ExplicitColumnsAttribute), true).Length > 0;
@@ -2077,7 +2147,8 @@ namespace PetaPoco
                     if (pc.ColumnName == null)
                     {
                         pc.ColumnName = pi.Name;
-                        if (Database.Mapper != null && !Database.Mapper.MapPropertyToColumn(pi, ref pc.ColumnName, ref pc.ResultColumn))
+
+                        if ((MapperRegistry.Mapper != null) && MapperRegistry.Mapper.MapPropertyToColumn(pi, ref pc.ColumnName, ref pc.ResultColumn))
                             continue;
                     }
                     
@@ -2147,8 +2218,10 @@ namespace PetaPoco
 
 								// Get the converter
 								Func<object, object> converter = null;
-								if (Database.Mapper != null)
-									converter = Database.Mapper.GetFromDbConverter(null, srcType);
+                                if (MapperRegistry.Mapper != null)
+                                {
+                                    converter = MapperRegistry.Mapper.GetFromDbConverter(null, srcType);
+                                }
 								if (ForceDateTimesToUtc && converter == null && srcType == typeof(DateTime))
 									converter = delegate(object src) { return new DateTime(((DateTime)src).Ticks, DateTimeKind.Utc); };
 
@@ -2356,22 +2429,25 @@ namespace PetaPoco
 			{
 				Func<object, object> converter = null;
 
-				// Get converter from the mapper
-				if (Database.Mapper != null)
-				{
+				// Get converter from the mappe
 					if (pc != null)
 					{
-						converter = Database.Mapper.GetFromDbConverter(pc.PropertyInfo, srcType);
+                        if (MapperRegistry.Mapper != null)
+                        {
+                            converter = MapperRegistry.Mapper.GetFromDbConverter(pc.PropertyInfo, srcType);
+                        }
 					}
 					else
 					{
-						var m2 = Database.Mapper as IMapper2;
-						if (m2 != null)
-						{
-							converter = m2.GetFromDbConverter(dstType, srcType);
-						}
+                        if (MapperRegistry.Mapper != null)
+                        {
+                            var m2 = MapperRegistry.Mapper as IMapper2;
+                            if (m2 != null)
+                            {
+                                converter = m2.GetFromDbConverter(dstType, srcType);
+                            }
+                        }
 					}
-				}
 
 				// Standard DateTime->Utc mapper
 				if (forceDateTimesToUtc && converter == null && srcType == typeof(DateTime) && (dstType == typeof(DateTime) || dstType == typeof(DateTime?)))
