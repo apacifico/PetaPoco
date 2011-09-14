@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq.Expressions;
@@ -63,7 +63,7 @@ namespace PetaPoco.FluentConfiguration {
         public PetaPocoMap(PetaPocoTypeDefinition petaPocoTypeDefinition) { 
             _petaPocoTypeDefinition = petaPocoTypeDefinition; 
             _petaPocoTypeDefinition.Type = typeof(T); 
-            _petaPocoTypeDefinition.AutoIncrement = true; 
+            _petaPocoTypeDefinition.AutoIncrement = false; 
             _petaPocoTypeDefinition.ColumnConfiguration = new Dictionary<string, PetaPocoColumnDefinition>(); 
         } 
         public PetaPocoMap<T> TableName(string tableName) { 
@@ -159,9 +159,9 @@ namespace PetaPoco.FluentConfiguration {
 
         public void GetTableInfo(Type t, TableInfo ti)
         {
-            PetaPocoTypeDefinition def = fluMap.Config[t];
-            if (def != null)
+            if(fluMap.Config.ContainsKey(t))
             {
+                PetaPocoTypeDefinition def = fluMap.Config[t];
                 ti.TableName = def.TableName;
                 ti.PrimaryKey = def.PrimaryKey;
                 ti.AutoIncrement = def.AutoIncrement;
@@ -170,9 +170,9 @@ namespace PetaPoco.FluentConfiguration {
 
         public bool MapPropertyToColumn(System.Reflection.PropertyInfo pi, ref string columnName, ref bool resultColumn)
         {
-            PetaPocoTypeDefinition def = fluMap.Config[pi.DeclaringType];
-            if (def != null)
+            if(fluMap.Config.ContainsKey(pi.DeclaringType))
             {
+                PetaPocoTypeDefinition def = fluMap.Config[pi.DeclaringType];
                 PetaPocoColumnDefinition colDef = def.ColumnConfiguration[pi.Name];
                 if (colDef != null)
                 {
