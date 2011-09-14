@@ -1643,13 +1643,23 @@ namespace PetaPoco
 					    object versionValue = null;
 
                         var primaryKeyValuePairs = GetPrimaryKeyValues(primaryKeyName, primaryKeyValue);
+#if !PETAPOCO_NO_DYNAMIC
+                        var dictExpandoObject = poco as IDictionary<string, object>;
+#else
+#endif
 
                         foreach (var i in pd.Columns)
                         {
                             // Don't update the primary key, but grab the value if we don't have it
                             if (primaryKeyValue == null && primaryKeyValuePairs.ContainsKey(i.Key))
                             {
+#if !PETAPOCO_NO_DYNAMIC
+                                if (dictExpandoObject != null) primaryKeyValuePairs[i.Key] = dictExpandoObject[i.Key];
+                                else primaryKeyValuePairs[i.Key] = i.Value.PropertyInfo.GetValue(poco, null);
+#else
                                 primaryKeyValuePairs[i.Key] = i.Value.PropertyInfo.GetValue(poco, null);
+#endif
+
                                 continue;
                             }
 
@@ -1659,9 +1669,14 @@ namespace PetaPoco
 
                             if (!i.Value.VersionColumn && columns != null && !columns.Contains(i.Value.ColumnName, StringComparer.OrdinalIgnoreCase))
                                 continue;
-                            
-                            object value = i.Value.PropertyInfo.GetValue(poco, null);
 
+                            object value = null;
+#if !PETAPOCO_NO_DYNAMIC
+                            if (dictExpandoObject != null) value = dictExpandoObject[i.Value.ColumnName];
+                            else value = i.Value.PropertyInfo.GetValue(poco, null);
+#else
+                            value = i.Value.PropertyInfo.GetValue(poco, null);
+#endif
                             if (i.Value.VersionColumn)
                             {
                                 versionName = i.Key;
@@ -1817,12 +1832,21 @@ namespace PetaPoco
 			// If primary key value not specified, pick it up from the object
             if (primaryKeyValue == null)
             {
+#if !PETAPOCO_NO_DYNAMIC
+                var expandoAsDictionnary = poco as IDictionary<string, object>;
+#else
+#endif
                 var pd = PocoData.ForObject(poco, primaryKeyName);
                 foreach (var i in pd.Columns)
                 {
                     if (primaryKeyValuePairs.ContainsKey(i.Key))
                     {
+#if !PETAPOCO_NO_DYNAMIC
+                        if (expandoAsDictionnary != null) primaryKeyValuePairs[i.Key] = expandoAsDictionnary[i.Key];
+                        else primaryKeyValuePairs[i.Key] = i.Value.PropertyInfo.GetValue(poco, null);
+#else
                         primaryKeyValuePairs[i.Key] = i.Value.PropertyInfo.GetValue(poco, null);
+#endif
                     }   
 	            }
             }
@@ -1868,50 +1892,82 @@ namespace PetaPoco
 		{
             MapperRegistry.Current = this;
 			var pd = PocoData.ForObject(poco, primaryKeyName);
-			object pk;
-			PocoColumn pc;
-			if (pd.Columns.TryGetValue(primaryKeyName, out pc))
-			{
-				pk = pc.GetValue(poco);
-			}
+
+            string[] primaryKeySplitted = primaryKeyName.Split(',');
+			object[] pk= new object[primaryKeySplitted.Length];
 #if !PETAPOCO_NO_DYNAMIC
-			else if (poco.GetType() == typeof(System.Dynamic.ExpandoObject))
-			{
-				return true;
-			}
+            var expandoToDictionary = poco as IDictionary<string, object>;
+#else
 #endif
-			else
-			{
-				var pi = poco.GetType().GetProperty(primaryKeyName);
-				if (pi == null)
-					throw new ArgumentException(string.Format("The object doesn't have a property matching the primary key column name '{0}'", primaryKeyName));
-				pk = pi.GetValue(poco, null);
-			}
+            int index = 0;
+            int matchedKeyElem = 0;
 
-			if (pk == null)
+            foreach (string primaryKeyPart in primaryKeySplitted)
+            {
+                PocoColumn pc;
+                if (pd.Columns.TryGetValue(primaryKeyPart.Trim(), out pc))
+                {
+                    pk[index] = pc.GetValue(poco);
+                    matchedKeyElem++;
+                }
+#if !PETAPOCO_NO_DYNAMIC
+                else if (expandoToDictionary !=null)
+                {
+                    pk[index] = expandoToDictionary[primaryKeyPart.Trim()];
+                    matchedKeyElem++;
+                }
+#endif
+                else
+                {
+                    var pi = poco.GetType().GetProperty(primaryKeyPart.Trim());
+                    if (pi == null)
+                        throw new ArgumentException(string.Format("The object doesn't have a property matching the primary key column name '{0}'", primaryKeyName));
+                    pk[index] = pi.GetValue(poco, null);
+                    matchedKeyElem++;
+                }
+                index++;
+            }
+
+			if (matchedKeyElem != index)
 				return true;
 
-			var type = pk.GetType();
+            int matchValueCnt = 0;
 
-			if (type.IsValueType)
-			{
-				// Common primary key types
-				if (type == typeof(long))
-					return (long)pk == 0;
-				else if (type == typeof(ulong))
-					return (ulong)pk == 0;
-				else if (type == typeof(int))
-					return (int)pk == 0;
-				else if (type == typeof(uint))
-					return (uint)pk == 0;
+            foreach (object keyElem in pk)
+            {
+                var type = keyElem.GetType();
 
-				// Create a default instance and compare
-				return pk == Activator.CreateInstance(pk.GetType());
-			}
-			else
-			{
-				return pk == null;
-			}
+                if (type.IsValueType)
+                {
+                    // Common primary key types
+                    if (type == typeof(long))
+                    {
+                        if ((long)keyElem == 0) matchValueCnt++;
+                    }
+                    else if (type == typeof(ulong))
+                    {
+                        if ((ulong)keyElem == 0) matchValueCnt++;
+                    }
+                    else if (type == typeof(int))
+                    {
+                        if ((int)keyElem == 0) matchValueCnt++;
+                    }
+                    else if (type == typeof(uint))
+                    {
+                        if ((uint)keyElem == 0) matchValueCnt++;
+                    }
+
+                    // Create a default instance and compare
+                    if (keyElem == Activator.CreateInstance(keyElem.GetType())) matchValueCnt++;
+                }
+                else
+                {
+                    if (keyElem == null) matchValueCnt++;
+                }
+            }
+
+            if (matchValueCnt == index) return true;
+            else return false;
 		}
 
 		public bool IsNew(object poco)
@@ -2033,12 +2089,19 @@ namespace PetaPoco
 					var pd = new PocoData();
 					pd.TableInfo = new TableInfo();
 					pd.Columns = new Dictionary<string, PocoColumn>(StringComparer.OrdinalIgnoreCase);
-					pd.Columns.Add(primaryKeyName, new ExpandoColumn() { ColumnName = primaryKeyName });
+
+                    string[] primaryKeyNameSplitted = primaryKeyName.Split(',');
+
+                    foreach (string keyPart in primaryKeyNameSplitted)
+                    {
+                        pd.Columns.Add(keyPart.Trim(), new ExpandoColumn() { ColumnName = keyPart.Trim() });
+                    }
+					//pd.Columns.Add(primaryKeyName, new ExpandoColumn() { ColumnName = primaryKeyName });
 					pd.TableInfo.PrimaryKey = primaryKeyName;
 					pd.TableInfo.AutoIncrement = true;
 					foreach (var col in (o as IDictionary<string, object>).Keys)
 					{
-						if (col!=primaryKeyName)
+						if (!primaryKeyName.Contains(col))
 							pd.Columns.Add(col, new ExpandoColumn() { ColumnName = col });
 					}
 					return pd;
