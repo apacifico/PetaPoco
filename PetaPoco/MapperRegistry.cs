@@ -7,10 +7,10 @@ namespace PetaPoco
 {
     public static class MapperRegistry
     {
-        [ThreadStatic]
+        //[ThreadStatic]
         private static Database _current;
 
-        [ThreadStatic]
+        //[ThreadStatic]
         private static Dictionary<PetaPoco.Database, IMapper> registry = new Dictionary<Database, IMapper>();
 
         public static void Register(PetaPoco.Database database, IMapper mapper)
