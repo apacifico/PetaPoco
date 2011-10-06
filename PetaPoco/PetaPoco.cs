@@ -735,7 +735,20 @@ namespace PetaPoco
                     {
                         object val = cmd.ExecuteScalar();
                         OnExecutedCommand(cmd);
-                        return (T)Convert.ChangeType(val, typeof(T));
+                        //return (T)Convert.ChangeType(val, typeof(T));
+                        //Fix case of nullable mbinette & schotime
+                        Type t = typeof(T);
+                        Type u = Nullable.GetUnderlyingType(t);
+
+                        if (u != null)
+                        {
+                            if (val == null) return default(T);
+                            return (T)Convert.ChangeType(val, u);
+                        }
+                        else
+                        {
+                            return (T)Convert.ChangeType(val, t);
+                        }
                     }
                 }
                 finally
@@ -1433,10 +1446,23 @@ namespace PetaPoco
 			return Insert(tableName, primaryKeyName, true, poco);
 		}
 
+        public object Insert(string tableName, string primaryKeyName,string versionColumName,  object poco)
+        {
+            MapperRegistry.Current = this;
+            return Insert(tableName, primaryKeyName, versionColumName, true, poco);
+        }
+
+        public object Insert(string tableName, string primaryKeyName, bool autoIncrement, object poco)
+        { 
+            return Insert(tableName, primaryKeyName,null, autoIncrement, poco);
+        }
+
+
+
 		// Insert a poco into a table.  If the poco has a property with the same name 
 		// as the primary key the id of the new record is assigned to it.  Either way,
 		// the new id is returned.
-		public object Insert(string tableName, string primaryKeyName, bool autoIncrement, object poco)
+		public object Insert(string tableName, string primaryKeyName,string versionColumName, bool autoIncrement, object poco)
 		{
             MapperRegistry.Current = this;
 			try
@@ -1473,7 +1499,7 @@ namespace PetaPoco
 							values.Add(string.Format("{0}{1}", _paramPrefix, index++));
 
 						    object val = i.Value.GetValue(poco);
-                            if (i.Value.VersionColumn)
+                            if (i.Value.VersionColumn || (i.Value.ColumnName == versionColumName && versionColumName!=null))
                             {
                                 val = 1;
                                 versionName = i.Key;
@@ -1618,15 +1644,88 @@ namespace PetaPoco
 			return Insert(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, pd.TableInfo.AutoIncrement, poco);
 		}
 
+        public int Update(object poco)
+        {
+            MapperRegistry.Current = this;
+            return Update(poco, null, null);
+        }
+
+        public int Update(object poco, IEnumerable<string> columns)
+        {
+            MapperRegistry.Current = this;
+            return Update(poco, null, columns);
+        }
+
+
+        public int Update(object poco, object primaryKeyValue)
+        {
+            MapperRegistry.Current = this;
+            return Update(poco, primaryKeyValue, null);
+        }
+
+        public int Update(object poco, object primaryKeyValue, IEnumerable<string> columns)
+        {
+            MapperRegistry.Current = this;
+            var pd = PocoData.ForType(poco.GetType());
+            return Update(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, poco, primaryKeyValue, columns);
+        }
+
+        //Methods with metadata passed in parameter
+        // - TableName
+        // - Primary key
+        // - Version column name
+        // - Explict column list to update
+
+        // - Key Value
+        // - poco
+
+        public int Update(string tableName, string primaryKeyName, object poco)
+        {
+            MapperRegistry.Current = this;
+            return Update(tableName, primaryKeyName,null, poco, null);
+        }
+
+        //Method with version control
+        public int Update(string tableName, string primaryKeyName, string versionColumnName, object poco)
+        {
+            MapperRegistry.Current = this;
+            return Update(tableName, primaryKeyName, versionColumnName, poco, null);
+        }
+
+        public int Update(string tableName, string primaryKeyName, object poco, IEnumerable<string> columns)
+        {
+            MapperRegistry.Current = this;
+            return Update(tableName, primaryKeyName,null, poco, null, columns);
+        }
+
+        //Method with version control
+        public int Update(string tableName, string primaryKeyName,string versionColumnName, object poco, IEnumerable<string> columns)
+        {
+            MapperRegistry.Current = this;
+            return Update(tableName, primaryKeyName, versionColumnName, poco, null, columns);
+        }
+
 		public int Update(string tableName, string primaryKeyName, object poco, object primaryKeyValue)
 		{
             MapperRegistry.Current = this;
-			return Update(tableName, primaryKeyName, poco, primaryKeyValue, null);
+			return Update(tableName, primaryKeyName,null, poco, primaryKeyValue, null);
 		}
 
+        //Method with version control
+        public int Update(string tableName, string primaryKeyName,string versionColumnName, object poco, object primaryKeyValue)
+        {
+            MapperRegistry.Current = this;
+            return Update(tableName, primaryKeyName, versionColumnName,  poco, primaryKeyValue, null);
+        }
+
+        public int Update(string tableName, string primaryKeyName, object poco, object primaryKeyValue, IEnumerable<string> columns)
+        { 
+            return Update(tableName, primaryKeyName,null, poco, primaryKeyValue, columns);
+        }
 
 		// Update a record with values from a poco.  primary key value can be either supplied or read from the poco
-		public int Update(string tableName, string primaryKeyName, object poco, object primaryKeyValue, IEnumerable<string> columns)
+        // A version column could be given to detect concurrent access
+		public int Update(string tableName, string primaryKeyName,string versionColumnName, object poco, object primaryKeyValue, IEnumerable<string> columns)
 		{
             MapperRegistry.Current = this;
 			try
@@ -1677,7 +1776,7 @@ namespace PetaPoco
 #else
                             value = i.Value.PropertyInfo.GetValue(poco, null);
 #endif
-                            if (i.Value.VersionColumn)
+                            if (i.Value.VersionColumn  || (i.Value.ColumnName==versionColumnName && versionColumnName!=null))
                             {
                                 versionName = i.Key;
                                 versionValue = value;
@@ -1697,9 +1796,13 @@ namespace PetaPoco
 					    cmd.CommandText = string.Format("UPDATE {0} SET {1} WHERE {2}",
                                             EscapeTableName(tableName), sb.ToString(), BuildPrimaryKeySql(primaryKeyValuePairs, ref index));
 
+                        string primaryKeyTostring = string.Empty;
+
 					    foreach (var keyValue in primaryKeyValuePairs)
 					    {
-                            AddParam(cmd, keyValue.Value, _paramPrefix);    
+                            AddParam(cmd, keyValue.Value, _paramPrefix);
+                            if (primaryKeyTostring != string.Empty) primaryKeyTostring += " , ";
+                            primaryKeyTostring += keyValue.Value.ToString();
 					    }
 
                         if (!string.IsNullOrEmpty(versionName))
@@ -1712,6 +1815,11 @@ namespace PetaPoco
 
 						// Do it
 						var result = cmd.ExecuteNonQuery();
+                        if (result == 0 && versionName != null)
+                        {
+                            throw new System.Data.DBConcurrencyException(string.Format("A Concurrency update occured in table {0} for primary key value = {1} and version = {2}", tableName, primaryKeyTostring, versionValue.ToString())); 
+                        }
+
                         OnExecutedCommand(cmd);
 
                         // Set Version
@@ -1719,7 +1827,7 @@ namespace PetaPoco
                             PocoColumn pc;
                             if (pd.Columns.TryGetValue(versionName, out pc))
                             {
-                                pc.PropertyInfo.SetValue(poco, Convert.ChangeType(Convert.ToInt64(versionValue)+1, pc.PropertyInfo.PropertyType), null);
+                                pc.SetValue(poco, pc.ChangeType(Convert.ToInt64(versionValue)+1));
                             }
                         }
 
@@ -1768,42 +1876,6 @@ namespace PetaPoco
             }
             return primaryKeyValues;
         }
-
-        public int Update(string tableName, string primaryKeyName, object poco)
-		{
-            MapperRegistry.Current = this;
-			return Update(tableName, primaryKeyName, poco, null);
-		}
-
-		public int Update(string tableName, string primaryKeyName, object poco, IEnumerable<string> columns)
-		{
-            MapperRegistry.Current = this;
-			return Update(tableName, primaryKeyName, poco, null, columns);
-		}
-
-		public int Update(object poco, IEnumerable<string> columns)
-		{
-            MapperRegistry.Current = this;
-			return Update(poco, null, columns);
-		}
-
-		public int Update(object poco)
-		{
-            MapperRegistry.Current = this;
-			return Update(poco, null, null);
-		}
-
-		public int Update(object poco, object primaryKeyValue)
-		{
-            MapperRegistry.Current = this;
-			return Update(poco, primaryKeyValue, null);
-		}
-		public int Update(object poco, object primaryKeyValue, IEnumerable<string> columns)
-		{
-            MapperRegistry.Current = this;
-			var pd = PocoData.ForType(poco.GetType());
-			return Update(pd.TableInfo.TableName, pd.TableInfo.PrimaryKey, poco, primaryKeyValue, columns);
-		}
 
 		public int Update<T>(string sql, params object[] args)
 		{
