@@ -1477,6 +1477,7 @@ namespace PetaPoco
 						var values = new List<string>();
 						var index = 0;
 					    var versionName = "";
+                        object versionVal=null;
 
 						foreach (var i in pd.Columns)
 						{
@@ -1501,8 +1502,10 @@ namespace PetaPoco
 						    object val = i.Value.GetValue(poco);
                             if (i.Value.VersionColumn || (i.Value.ColumnName == versionColumName && versionColumName!=null))
                             {
-                                val = 1;
+                                if (val.GetType() == typeof(System.DateTime)) val = System.DateTime.Now;
+                                else val = 1;
                                 versionName = i.Key;
+                                versionVal = val;
                             }
 
 						    AddParam(cmd, val, _paramPrefix);
@@ -1617,7 +1620,7 @@ namespace PetaPoco
                             PocoColumn pc;
                             if (pd.Columns.TryGetValue(versionName, out pc))
                             {
-                                pc.SetValue(poco, pc.ChangeType(1));
+                                pc.SetValue(poco, pc.ChangeType(versionVal));
                             }
                         }
 
@@ -1780,7 +1783,8 @@ namespace PetaPoco
                             {
                                 versionName = i.Key;
                                 versionValue = value;
-                                value = Convert.ToInt64(value) + 1;
+                                if (versionValue.GetType() == typeof(System.DateTime)) value = DateTime.Now;
+                                else value = Convert.ToInt64(value) + 1;
                             }
 
                             // Build the sql
