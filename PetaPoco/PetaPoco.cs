@@ -1743,6 +1743,7 @@ namespace PetaPoco
 						var pd = PocoData.ForObject(poco,primaryKeyName);
 					    string versionName = null;
 					    object versionValue = null;
+                        object newVersionValue = null;
 
                         var primaryKeyValuePairs = GetPrimaryKeyValues(primaryKeyName, primaryKeyValue);
 #if !PETAPOCO_NO_DYNAMIC
@@ -1785,6 +1786,7 @@ namespace PetaPoco
                                 versionValue = value;
                                 if (versionValue.GetType() == typeof(System.DateTime)) value = DateTime.Now;
                                 else value = Convert.ToInt64(value) + 1;
+                                newVersionValue = value;
                             }
 
                             // Build the sql
@@ -1831,7 +1833,7 @@ namespace PetaPoco
                             PocoColumn pc;
                             if (pd.Columns.TryGetValue(versionName, out pc))
                             {
-                                pc.SetValue(poco, pc.ChangeType(Convert.ToInt64(versionValue)+1));
+                                pc.SetValue(poco, pc.ChangeType(newVersionValue));
                             }
                         }
 
